@@ -1,0 +1,13 @@
+# Environment variables (API keys)
+.env
+
+# Chroma vector database files & folders
+*.sqlite3
+*.bin
+chroma/
+chroma_db/
+
+# Python virtual environments & cache
+venv/
+.venv/
+__pycache__/
