@@ -1,6 +1,6 @@
 import os
-import langchain
-from langchain_community.document_loaders import PyPDFLoader, PyPDFDirectoryLoader, WebBaseLoader
+os.environ["USER_AGENT"] = "my-rag-learning-app/1.0"
+from langchain_community.document_loaders import  PyPDFDirectoryLoader, WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
@@ -8,58 +8,74 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-loaded_docs=[]
-docs_combined=[]
-
-def docs_loader_list(loaded_doc):
-    docs_combined.extend(loaded_doc)
-    return loaded_doc
-
+def docs_loader_list(*loaded_doc):
+    combined=[]
+    for docs in loaded_doc:
+        combined.extend(docs)
+    return combined
 
 
-pdf_loader=PyPDFDirectoryLoader(
-    path=r"D:\Research papers (DL)"
-)
+PERSIST_DIR="./chroma_db"
+Collection_name="research_papers"
+# Embeddings function
+embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-web_laoder=WebBaseLoader(
-    web_path=r"https://en.wikipedia.org/wiki/Attention_Is_All_You_Need"
-)
+vector_db=Chroma(
+        collection_name=Collection_name,
+        embedding_function=embedding_model,
+        persist_directory=PERSIST_DIR
+    )
+existing_data = vector_db.get()
 
-web_docs=web_laoder.load()
-pdf_docs=pdf_loader.load()
-docs_loader_list(web_docs)
-docs_loader_list(pdf_docs)
+if len(existing_data["ids"]) > 0:
+    print("Fetching the embeddings locally!")
 
-# Text Splitter
+else:
+    print("Creating the embeddings!")
 
-Text_splitter=RecursiveCharacterTextSplitter(chunk_size=5000, chunk_overlap=50)
-splitted_doc=Text_splitter.split_documents(docs_combined)
+    pdf_loader=PyPDFDirectoryLoader(
+        path=r"D:\Research papers (DL)"
+    )
 
-# Embeddings 
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    web_laoder=WebBaseLoader(
+        web_path=r"https://en.wikipedia.org/wiki/Attention_Is_All_You_Need"
+    )
 
-# vector store
+    web_docs=web_laoder.load()
+    pdf_docs=pdf_loader.load()
 
-vector_db=Chroma.from_documents(
-    documents=splitted_doc,
-    embedding=embeddings,
-    collection_name="research_papers",
-    persist_directory="./chroma_db"
-)
+    docs_combined=docs_loader_list(web_docs,pdf_docs)
+
+    # Text Splitter
+
+    Text_splitter=RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    splitted_doc=Text_splitter.split_documents(docs_combined)
+
+    # vector store
+    vector_db=Chroma.from_documents(
+        documents=splitted_doc,
+        embedding=embedding_model,
+        collection_name=Collection_name,
+        persist_directory="./chroma_db"
+    )
+
+
+
 
 # retreiver
-Retreiver=vector_db.as_retriever()
+Retreiver=vector_db.as_retriever(
+    search_type="similarity",
+    search_kwargs={'k':2}
+)
 
 
+vecs=Retreiver.invoke("trump is gay")
 
-vecs=Retreiver.invoke("what is attention")
-
-# for i, doc in enumerate(vecs):
-#     print(f"\nResult {i+1}")
-#     print("Content:", doc.page_content)
-#     print("Metadata:", doc.metadata)
-
-
+for i, doc in enumerate(vecs):
+    print(f"\nResult {i+1}")
+    print("Content:", doc.page_content)
+    print("Metadata:", doc.metadata)
+    print("=="*20)
 
 
 
