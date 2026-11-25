@@ -2,11 +2,19 @@ import os
 os.environ["USER_AGENT"] = "my-rag-learning-app/1.0"
 from langchain_community.document_loaders import  PyPDFDirectoryLoader, WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings,HuggingFaceEndpoint,ChatHuggingFace
 from langchain_chroma import Chroma
+from langchain_core.messages import HumanMessage,AIMessage
+from langchain_core.output_parsers import  StrOutputParser
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from dotenv import load_dotenv
 
 load_dotenv()
+
+chat_history=[]
+
+context=[]
 
 def docs_loader_list(*loaded_doc):
     combined=[]
@@ -19,6 +27,15 @@ PERSIST_DIR="./chroma_db"
 Collection_name="research_papers"
 # Embeddings function
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# Generative model
+llm = ChatOllama(
+    model="llama3.2:3b",
+    temperature=0.3
+)
+model = ChatOllama(
+    model="llama3.2:3b",
+    temperature=0.3
+)
 
 vector_db=Chroma(
         collection_name=Collection_name,
@@ -26,6 +43,8 @@ vector_db=Chroma(
         persist_directory=PERSIST_DIR
     )
 existing_data = vector_db.get()
+
+# Embeddings generation 
 
 if len(existing_data["ids"]) > 0:
     print("Fetching the embeddings locally!")
@@ -60,22 +79,54 @@ else:
     )
 
 
-
-
 # retreiver
 Retreiver=vector_db.as_retriever(
     search_type="similarity",
-    search_kwargs={'k':2}
+    search_kwargs={'k':3}
 )
 
 
-vecs=Retreiver.invoke("trump is gay")
+# for i, doc in enumerate(vecs):
+#     context.append(doc.page_content)
 
-for i, doc in enumerate(vecs):
-    print(f"\nResult {i+1}")
-    print("Content:", doc.page_content)
-    print("Metadata:", doc.metadata)
-    print("=="*20)
+# Template1=PromptTemplate(
+#     template="Give the most accurate match of {user_input}",
+#     input_variables=['user_input']
+# )
+
+Template2=PromptTemplate(
+    template="Give the answer using the chat history {chat_history} and the context {context}",
+    input_variables=['chat_history','context']
+)
+
+parser=StrOutputParser()
+
+chain2=Template2 | model | parser
+
+while True:
+    user_input=input("YOU: ")
+    if(user_input=="exit"):
+        break
+    chat_history.append(
+        HumanMessage(content=user_input)
+    )
+    # print("=="*20)
+    print(user_input)
+    context_respone=Retreiver.invoke(user_input)
+    for i, doc in enumerate(context_respone):
+        context.append(doc.page_content)
+
+    response= chain2.invoke({"chat_history":chat_history,"context":context})
+    print(response)
+    chat_history.append(
+        AIMessage(content=response)
+    )
+    # print("-"*20)
+    # for i in chat_history:
+    #     print(i)
+    #     print("-"*20)
+    
+    # print("+"*20)
 
 
 
