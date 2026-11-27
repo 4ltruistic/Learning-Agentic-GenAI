@@ -7,7 +7,7 @@ from langchain_chroma import Chroma
 from langchain_core.messages import HumanMessage,AIMessage
 from langchain_core.output_parsers import  StrOutputParser
 from langchain_ollama import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate,MessagesPlaceholder
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -60,8 +60,8 @@ else:
         web_path=r"https://en.wikipedia.org/wiki/Attention_Is_All_You_Need"
     )
 
-    web_docs=web_laoder.load()
-    pdf_docs=pdf_loader.load()
+    web_docs=web_laoder.lazy_load()
+    pdf_docs=pdf_loader.lazy_load()
 
     docs_combined=docs_loader_list(web_docs,pdf_docs)
 
@@ -85,23 +85,24 @@ Retreiver=vector_db.as_retriever(
     search_kwargs={'k':3}
 )
 
+prompt=ChatPromptTemplate.from_messages([
+    ("system","""You are a helpful research assistant.
+                    Answer the user's question using the retrieved context.
+                    Use chat history only to understand the conversation.
+                    If the answer is not present in the context, clearly say
+                    that you could not find the answer in the provided documents.
+                    Give the answer using the chat history,context and user_input
+                    Context: {context}"""),
+    MessagesPlaceholder(variable_name="chat_history"),
+    ("human","{user_input}")    
 
-# for i, doc in enumerate(vecs):
-#     context.append(doc.page_content)
-
-# Template1=PromptTemplate(
-#     template="Give the most accurate match of {user_input}",
-#     input_variables=['user_input']
-# )
-
-Template2=PromptTemplate(
-    template="Give the answer using the chat history {chat_history} and the context {context}",
-    input_variables=['chat_history','context']
+]
+    
 )
 
 parser=StrOutputParser()
 
-chain2=Template2 | model | parser
+chain2=prompt | model | parser
 
 while True:
     user_input=input("YOU: ")
@@ -110,17 +111,31 @@ while True:
     chat_history.append(
         HumanMessage(content=user_input)
     )
-    # print("=="*20)
-    print(user_input)
-    context_respone=Retreiver.invoke(user_input)
-    for i, doc in enumerate(context_respone):
-        context.append(doc.page_content)
+    if(len(chat_history)>10):
+        chat_history=chat_history[-10:]
 
-    response= chain2.invoke({"chat_history":chat_history,"context":context})
-    print(response)
+
+    print("=="*20)
+    print(f"YOU:{user_input}")
+    context_respone=Retreiver.invoke(user_input)
+    # for i, doc in enumerate(context_respone):
+    #     context.append(doc.page_content)
+    
+    context="\n\n".join(
+        doc.page_content for doc in context_respone
+    )
+    
+
+    response= chain2.invoke({"chat_history":chat_history,"context":context,"user_input":user_input})
+    print(f"AI: {response}")
+    print("=="*20)
     chat_history.append(
         AIMessage(content=response)
     )
+    chat_history.append(
+        HumanMessage(content=user_input)
+    )
+    # context.clear()
     # print("-"*20)
     # for i in chat_history:
     #     print(i)
